@@ -5,7 +5,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from review_bot.llm_clients.base_client import GeminiClient, OllamaClient
-from review_bot.services.gitlab_service import GitLabService
+from review_bot.services.gitlab_service import GitHubService
 from review_bot.services.review_service import MRReviewState
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class ReviewWorkflow:
     def __init__(self):
-        self.gitlab_service = GitLabService()
+        self.github_service = GitHubService()
 
         # Initialize different models for each role
         self.reviewer_a_client = OllamaClient(os.getenv("REVIEWER_A_MODEL", "llama3.2"))
@@ -107,9 +107,7 @@ Readability/Maintainability Review:
             state["judge_output"] = final_review
 
             # Post the review
-            self.gitlab_service.post_review_comment(
-                state["project_id"], state["mr_iid"], final_review
-            )
+            self.github_service.post_review_comment(state["mr_iid"], final_review)
 
         except Exception as e:
             logger.error(f"Judge failed: {e}")
@@ -139,9 +137,7 @@ Human Feedback:
             state["justified_review_text"] = justified_review
 
             # Post justification as reply
-            self.gitlab_service.post_review_comment(
-                state["project_id"], state["mr_iid"], justified_review
-            )
+            self.github_service.post_review_comment(state["mr_iid"], justified_review)
 
         except Exception as e:
             logger.error(f"Justify failed: {e}")
