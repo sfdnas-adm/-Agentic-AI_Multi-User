@@ -5,7 +5,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from review_bot.llm_clients.base_client import GeminiClient, OllamaClient
-from review_bot.services.gitlab_service import GitHubService
+from review_bot.services.github_service import GitHubService
 from review_bot.services.review_service import MRReviewState
 
 logger = logging.getLogger(__name__)

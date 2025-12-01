@@ -6,7 +6,7 @@ import os
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
-from review_bot.services.gitlab_service import GitHubService
+from review_bot.services.github_service import GitHubService
 from review_bot.services.langgraph_service import ReviewWorkflow
 from review_bot.services.memory_service import PostgresMemoryService
 
@@ -37,7 +37,7 @@ class GitHubComment(BaseModel):
 
 
 # Initialize services globally with error handling
-gitlab_tool = None
+github_tool = None
 review_workflow = None
 memory_service = None
 
@@ -60,27 +60,25 @@ except Exception as e:
     logger.error(f"Failed to initialize memory service: {e}")
 
 
-async def process_review_workflow(project_id: int, mr_iid: int):
+async def process_review_workflow(project_id: int, pr_number: int):
     if not github_tool or not review_workflow:
         logger.error("Services not initialized properly")
         return
 
-    logger.info(f"STARTING review for MR !{mr_iid} in Project {project_id}...")
+    logger.info(f"STARTING review for PR #{pr_number}...")
 
     # --- 1. Use the new Tool to fetch the code diff ---
-    diff_text = github_tool.fetch_pr_diff(
-        mr_iid
-    )  # GitHub uses PR numbers, not project_id
+    diff_text = github_tool.fetch_pr_diff(pr_number)
 
     if "Error" in diff_text:
-        logger.error(f"Failed to fetch diff for MR !{mr_iid}: {diff_text}")
+        logger.error(f"Failed to fetch diff for PR #{pr_number}: {diff_text}")
         return
 
     logger.info(f"Successfully fetched diff (Size: {len(diff_text)} characters).")
 
     # --- 2. Run LangGraph workflow ---
     try:
-        result = review_workflow.run_review(project_id, mr_iid, diff_text)
+        result = review_workflow.run_review(project_id, pr_number, diff_text)
         if result.get("error_message"):
             logger.error(f"Review workflow error: {result['error_message']}")
         else:
@@ -88,12 +86,12 @@ async def process_review_workflow(project_id: int, mr_iid: int):
             final_review = result.get("judge_output", "")
             if memory_service:
                 memory_service.save_review_context(
-                    project_id, mr_iid, diff_text, final_review
+                    project_id, pr_number, diff_text, final_review
                 )
     except Exception as e:
         logger.error(f"Review workflow failed: {e}")
 
-    logger.info(f"COMPLETED review for MR !{mr_iid}.")
+    logger.info(f"COMPLETED review for PR #{pr_number}.")
 
 
 app = FastAPI(title="AI Code Review Bot")
@@ -136,65 +134,64 @@ async def handle_pull_request(pr_event: GitHubPullRequest, request: Request):
     }
 
 
-async def process_human_feedback(project_id: int, mr_iid: int, human_comment: str):
+async def process_human_feedback(project_id: int, pr_number: int, human_comment: str):
     """Process human feedback on AI review"""
     if not memory_service or not review_workflow:
         logger.error("Services not initialized properly")
         return
 
-    logger.info(f"Processing human feedback for MR !{mr_iid}")
+    logger.info(f"Processing human feedback for PR #{pr_number}")
 
     # Load context from PostgreSQL
-    diff_text, ai_review = memory_service.load_review_context(project_id, mr_iid)
+    diff_text, ai_review = memory_service.load_review_context(project_id, pr_number)
 
     if not diff_text:
-        logger.warning(f"No previous context found for MR !{mr_iid}. Ignoring comment.")
+        logger.warning(
+            f"No previous context found for PR #{pr_number}. Ignoring comment."
+        )
         return
 
     try:
         # Run justification workflow
         result = review_workflow.run_justification(
-            project_id, mr_iid, diff_text, ai_review, human_comment
+            project_id, pr_number, diff_text, ai_review, human_comment
         )
         if result.get("error_message"):
             logger.error(f"Justification workflow error: {result['error_message']}")
     except Exception as e:
         logger.error(f"Justification workflow failed: {e}")
 
-    logger.info(f"COMPLETED justification for MR !{mr_iid}")
+    logger.info(f"COMPLETED justification for PR #{pr_number}")
 
 
 @app.post("/webhook/comment")
 async def handle_comment(comment_event: GitHubComment, request: Request):
-    """Handle GitLab comment webhook for human feedback"""
-    if (
-        comment_event.object_kind != "note"
-        or comment_event.object_attributes.get("noteable_type") != "MergeRequest"
-    ):
-        return {"status": "ignored", "reason": "Not a MR comment event"}
+    """Handle GitHub comment webhook for human feedback"""
+    if comment_event.action != "created":
+        return {"status": "ignored", "reason": "Not a comment creation event"}
 
-    mr_iid = comment_event.merge_request.get("iid")
-    project_id = comment_event.project_id
-    comment_body = comment_event.object_attributes.get("note", "")
+    pr_number = comment_event.issue.get("number")
+    repo_name = comment_event.repository.get("name")
+    comment_body = comment_event.comment.get("body", "")
 
-    # Check if project is allowed
-    allowed_project_id = int(os.getenv("ALLOWED_PROJECT_ID", "8462"))
-    if project_id != allowed_project_id:
+    # Check if repository is allowed
+    allowed_repo = os.getenv("GITHUB_REPO", "-Agentic-AI_Multi-User")
+    if repo_name != allowed_repo:
         return {
             "status": "ignored",
-            "reason": f"Project {project_id} not allowed. Only project {allowed_project_id} is supported.",
+            "reason": f"Repository {repo_name} not allowed. Only {allowed_repo} is supported.",
         }
 
     # Check if services are ready
     if not memory_service or not review_workflow:
         return {"status": "error", "reason": "Services not initialized"}
 
-    logger.info(f"Received comment webhook: Project {project_id}, MR !{mr_iid}")
+    logger.info(f"Received comment webhook: Repository {repo_name}, PR #{pr_number}")
 
     # Process feedback asynchronously
-    asyncio.create_task(process_human_feedback(project_id, mr_iid, comment_body))
+    asyncio.create_task(process_human_feedback(0, pr_number, comment_body))
 
-    return {"status": "accepted", "message": f"Processing feedback for MR !{mr_iid}"}
+    return {"status": "accepted", "message": f"Processing feedback for PR #{pr_number}"}
 
 
 @app.get("/")
