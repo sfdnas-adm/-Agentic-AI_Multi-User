@@ -9,19 +9,27 @@ logger = logging.getLogger(__name__)
 
 class PostgresMemoryService:
     def __init__(self):
-        self.connection_params = {
-            "host": os.getenv("DB_HOST", "localhost"),
-            "database": os.getenv("DB_NAME", "reviewbot"),
-            "user": os.getenv("DB_USER", "postgres"),
-            "password": os.getenv("DB_PASSWORD", "postgres"),
-            "port": os.getenv("DB_PORT", "5432"),
-            "connect_timeout": 10,
-        }
+        # Use DATABASE_URL for Railway, fallback to individual vars
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            self.connection_params = database_url
+        else:
+            self.connection_params = {
+                "host": os.getenv("DB_HOST", "localhost"),
+                "database": os.getenv("DB_NAME", "reviewbot"),
+                "user": os.getenv("DB_USER", "postgres"),
+                "password": os.getenv("DB_PASSWORD", "postgres"),
+                "port": os.getenv("DB_PORT", "5432"),
+                "connect_timeout": 10,
+            }
         self._init_schema()
 
     def _get_connection(self):
         """Get database connection"""
-        return psycopg2.connect(**self.connection_params)
+        if isinstance(self.connection_params, str):
+            return psycopg2.connect(self.connection_params)
+        else:
+            return psycopg2.connect(**self.connection_params)
 
     def _init_schema(self):
         """Initialize database schema"""
