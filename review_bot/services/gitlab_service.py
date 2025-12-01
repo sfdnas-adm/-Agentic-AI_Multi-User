@@ -76,7 +76,11 @@ class GitLabService:
 
             # Add issue context
             issue_context = self.fetch_issue_details(project_id, mr_iid)
-            if issue_context and "Error" not in issue_context and "No" not in issue_context:
+            if (
+                issue_context
+                and "Error" not in issue_context
+                and "No" not in issue_context
+            ):
                 return f"=== LINKED ISSUES ===\n{issue_context}\n\n=== CODE CHANGES ===\n{diff_content}"
 
             return diff_content
@@ -129,7 +133,8 @@ class GitLabService:
 
             # Look for issue references (#123, closes #123, etc.)
             import re
-            issue_refs = re.findall(r'#(\d+)', f"{title} {description}")
+
+            issue_refs = re.findall(r"#(\d+)", f"{title} {description}")
 
             if not issue_refs:
                 return "No linked issues found"
@@ -147,7 +152,11 @@ class GitLabService:
                 except Exception:
                     continue
 
-            return "\n\n".join(issue_details) if issue_details else "No accessible issues found"
+            return (
+                "\n\n".join(issue_details)
+                if issue_details
+                else "No accessible issues found"
+            )
 
         except Exception as e:
             return f"Error fetching issue details: {e}"
