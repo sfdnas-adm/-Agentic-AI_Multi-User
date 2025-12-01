@@ -1,0 +1,18 @@
+# Web Server
+fastapi
+uvicorn[standard]
+pydantic
+# API Interactions
+requests
+python-gitlab # for GitLab API calls
+# LLM Orchestration
+langchain-core
+langgraph
+# LLM Providers
+google-genai
+# Database
+psycopg2-binary
+# Code Quality
+ruff
+# Other tools
+jq

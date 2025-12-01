@@ -91,3 +91,224 @@ For open source projects, say how it is licensed.
 
 ## Project status
 If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+
+---
+
+# AI Code Review Bot
+
+AI Code Review Bot is an intelligent, multi-LLM system designed to automatically review GitLab merge requests using specialized AI agents for comprehensive code analysis.
+
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Introduction
+
+The AI Code Review Bot provides automated code review capabilities for GitLab projects using multiple specialized LLM agents. It analyzes merge requests for security vulnerabilities, performance issues, code quality, and alignment with linked issue requirements, providing comprehensive feedback through GitLab comments.
+
+## Features
+
+- **Multi-LLM Architecture**: Uses different AI models for specialized review aspects
+  - Reviewer A (Security/Performance): Llama 3.2 via Ollama
+  - Reviewer B (Code Quality): Google Gemini 2.0 Flash
+  - Judge (Synthesis): Llama 3.2 via Ollama
+- **Issue Context Integration**: Automatically fetches and analyzes linked GitLab issues
+- **Human Feedback Loop**: Responds to human comments with AI justifications
+- **PostgreSQL Memory**: Persistent storage for review context and feedback
+- **Webhook Integration**: Real-time processing of GitLab MR and comment events
+- **Project Filtering**: Configurable project access control
+- **Code Quality**: Ruff formatting and linting integration
+
+## Architecture
+
+The system uses LangGraph for orchestrating multiple LLM agents in a sequential workflow:
+
+1. **Webhook Handler** (FastAPI) receives GitLab events
+2. **GitLab Service** fetches MR diffs and linked issue details
+3. **Review Workflow** (LangGraph) coordinates multiple AI reviewers
+4. **Memory Service** (PostgreSQL) stores context for human feedback
+5. **Comment Handler** processes human feedback and generates AI responses
+
+## Installation
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Ollama with Llama 3.2 model
+- GitLab Personal Access Token
+- Google Gemini API Key
+
+### Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd agentic-ai_multi-user
+   ```
+
+2. **Install Ollama and pull Llama model:**
+   ```bash
+   # Install Ollama (https://ollama.ai)
+   ollama pull llama3.2
+   ```
+
+3. **Configure environment:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your credentials
+   ```
+
+4. **Start the application:**
+   ```bash
+   docker-compose up --build
+   ```
+
+## Usage
+
+### GitLab Webhook Configuration
+
+Configure webhooks in your GitLab project settings:
+
+| Event Type | URL | Trigger Events |
+|------------|-----|----------------|
+| Merge Request Events | `http://your-server:8000/webhook/merge_request` | Open, Update, Reopen |
+| Comment Events | `http://your-server:8000/webhook/comment` | Comments on MRs |
+
+### Service Endpoints
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Health Check | `http://localhost:8000/` | Service status |
+| MR Webhook | `http://localhost:8000/webhook/merge_request` | GitLab MR events |
+| Comment Webhook | `http://localhost:8000/webhook/comment` | GitLab comment events |
+| Database | `localhost:5432` | PostgreSQL |
+
+### Development Commands
+
+```bash
+# Code quality
+make lint          # Check for issues
+make format        # Format code
+make fix           # Fix all issues
+
+# Docker operations
+make docker-up     # Start containers
+make docker-down   # Stop containers
+make docker-logs   # View app logs
+
+# Development
+make dev          # Run development server
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# GitLab Configuration
+GITLAB_TOKEN=your_gitlab_personal_access_token
+GITLAB_URL=https://gitlab.rz.uni-bamberg.de
+ALLOWED_PROJECT_ID=8462
+
+# LLM Configuration
+REVIEWER_A_MODEL=llama3.2
+REVIEWER_B_TYPE=gemini
+REVIEWER_B_MODEL=gemini-2.0-flash-exp
+JUDGE_MODEL=llama3.2
+GEMINI_API_KEY=your_gemini_api_key
+
+# Ollama Configuration
+OLLAMA_URL=http://localhost:11434
+
+# Database Configuration
+DB_HOST=localhost
+DB_NAME=reviewbot
+DB_USER=postgres
+DB_PASSWORD=postgres
+```
+
+### LLM Model Configuration
+
+The system supports different LLM providers for each reviewer role:
+
+- **Ollama Models**: `llama3.2`, `codellama`, `mistral`
+- **Google Gemini**: `gemini-2.0-flash-exp`, `gemini-pro`
+
+## Development
+
+### Code Quality
+
+The project uses Ruff for code formatting and linting:
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run linting
+ruff check review_bot/
+
+# Format code
+ruff format review_bot/
+
+# Fix issues automatically
+ruff check --fix review_bot/
+```
+
+### Testing
+
+```bash
+# Test webhook endpoints
+curl -X POST http://localhost:8000/webhook/merge_request \
+  -H "Content-Type: application/json" \
+  -d '{"object_kind": "merge_request", "project_id": 8462, "object_attributes": {"action": "open", "iid": 1}}'
+```
+
+### Database Schema
+
+The PostgreSQL database stores review context:
+
+```sql
+CREATE TABLE mr_reviews (
+    mr_iid INTEGER,
+    project_id INTEGER,
+    diff_text TEXT,
+    final_review_text TEXT,
+    review_comment_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (project_id, mr_iid)
+);
+```
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Follow code quality standards (Ruff)
+4. Submit a pull request
+
+### Code Standards
+
+- Python 3.11+
+- Ruff formatting and linting
+- Type hints required
+- Comprehensive error handling
+
+## License
+
+TBD
+
+## Authors
+
+- Development Team - University of Bamberg
+- Nagesha Sheshadri
+- Data Science Project - Multi-User Agentic AI System

@@ -1,0 +1,40 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - GITLAB_TOKEN=${GITLAB_TOKEN}
+      - GITLAB_URL=${GITLAB_URL:-https://gitlab.rz.uni-bamberg.de}
+      - ALLOWED_PROJECT_ID=${ALLOWED_PROJECT_ID:-8462}
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - REVIEWER_A_MODEL=${REVIEWER_A_MODEL:-llama3.2}
+      - REVIEWER_B_TYPE=${REVIEWER_B_TYPE:-ollama}
+      - REVIEWER_B_MODEL=${REVIEWER_B_MODEL:-llama3.2}
+      - JUDGE_MODEL=${JUDGE_MODEL:-llama3.2}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DB_HOST=db
+      - DB_NAME=reviewbot
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+    command: uvicorn review_bot.main:app --host 0.0.0.0 --port 8000 --reload
+
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=reviewbot
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
