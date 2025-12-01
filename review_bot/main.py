@@ -6,7 +6,7 @@ import os
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
-from review_bot.services.gitlab_service import GitLabService
+from review_bot.services.gitlab_service import GitHubService
 from review_bot.services.langgraph_service import ReviewWorkflow
 from review_bot.services.memory_service import PostgresMemoryService
 
@@ -18,17 +18,18 @@ logger = logging.getLogger(__name__)
 # This is what we expect from the webhook payload
 
 
-class MergeRequest(BaseModel):
-    object_kind: str
-    project_id: int
-    object_attributes: dict
+class GitHubPullRequest(BaseModel):
+    action: str
+    number: int
+    pull_request: dict
+    repository: dict
 
 
-class CommentEvent(BaseModel):
-    object_kind: str
-    project_id: int
-    merge_request: dict
-    object_attributes: dict
+class GitHubComment(BaseModel):
+    action: str
+    issue: dict
+    comment: dict
+    repository: dict
 
 
 # --- The core review processing function (TBD in Phase 2) ---
@@ -41,10 +42,10 @@ review_workflow = None
 memory_service = None
 
 try:
-    gitlab_tool = GitLabService()
-    logger.info("GitLab service initialized")
+    github_tool = GitHubService()
+    logger.info("GitHub service initialized")
 except Exception as e:
-    logger.error(f"Failed to initialize GitLab service: {e}")
+    logger.error(f"Failed to initialize GitHub service: {e}")
 
 try:
     review_workflow = ReviewWorkflow()
@@ -60,14 +61,16 @@ except Exception as e:
 
 
 async def process_review_workflow(project_id: int, mr_iid: int):
-    if not gitlab_tool or not review_workflow:
+    if not github_tool or not review_workflow:
         logger.error("Services not initialized properly")
         return
 
     logger.info(f"STARTING review for MR !{mr_iid} in Project {project_id}...")
 
     # --- 1. Use the new Tool to fetch the code diff ---
-    diff_text = gitlab_tool.fetch_mr_diff(project_id, mr_iid)
+    diff_text = github_tool.fetch_pr_diff(
+        mr_iid
+    )  # GitHub uses PR numbers, not project_id
 
     if "Error" in diff_text:
         logger.error(f"Failed to fetch diff for MR !{mr_iid}: {diff_text}")
@@ -96,38 +99,41 @@ async def process_review_workflow(project_id: int, mr_iid: int):
 app = FastAPI(title="AI Code Review Bot")
 
 
-@app.post("/webhook/merge_request")
-async def handle_merge_request(mr_event: MergeRequest, request: Request):
-    # 1. Check for the correct event type and action
-    if mr_event.object_kind != "merge_request" or mr_event.object_attributes.get(
-        "action"
-    ) not in ["open", "reopen", "update"]:
+@app.post("/webhook/pull_request")
+async def handle_pull_request(pr_event: GitHubPullRequest, request: Request):
+    # 1. Check for the correct action
+    if pr_event.action not in ["opened", "reopened", "synchronize"]:
         return {
             "status": "ignored",
-            "reason": f"Not an MR event or relevant action: {mr_event.object_kind}/{mr_event.object_attributes.get('action')}",
+            "reason": f"Not a relevant PR action: {pr_event.action}",
         }
 
-    mr_iid = mr_event.object_attributes.get("iid")
-    project_id = mr_event.project_id
+    pr_number = pr_event.number
+    repo_name = pr_event.repository.get("name")
 
-    # Check if project is allowed
-    allowed_project_id = int(os.getenv("ALLOWED_PROJECT_ID", "8462"))
-    if project_id != allowed_project_id:
+    # Check if repository is allowed
+    allowed_repo = os.getenv("GITHUB_REPO", "-Agentic-AI_Multi-User")
+    if repo_name != allowed_repo:
         return {
             "status": "ignored",
-            "reason": f"Project {project_id} not allowed. Only project {allowed_project_id} is supported.",
+            "reason": f"Repository {repo_name} not allowed. Only {allowed_repo} is supported.",
         }
 
     # Check if services are ready
-    if not gitlab_tool or not review_workflow:
+    if not github_tool or not review_workflow:
         return {"status": "error", "reason": "Services not initialized"}
 
-    logger.info(f"Received MR Webhook: Project {project_id}, MR !{mr_iid}")
+    logger.info(f"Received PR Webhook: Repository {repo_name}, PR #{pr_number}")
 
     # 2. Crucial: Respond immediately and process heavy work asynchronously
-    asyncio.create_task(process_review_workflow(project_id, mr_iid))
+    asyncio.create_task(
+        process_review_workflow(0, pr_number)
+    )  # Use 0 as dummy project_id
 
-    return {"status": "accepted", "message": f"Processing MR !{mr_iid} asynchronously."}
+    return {
+        "status": "accepted",
+        "message": f"Processing PR #{pr_number} asynchronously.",
+    }
 
 
 async def process_human_feedback(project_id: int, mr_iid: int, human_comment: str):
@@ -159,7 +165,7 @@ async def process_human_feedback(project_id: int, mr_iid: int, human_comment: st
 
 
 @app.post("/webhook/comment")
-async def handle_comment(comment_event: CommentEvent, request: Request):
+async def handle_comment(comment_event: GitHubComment, request: Request):
     """Handle GitLab comment webhook for human feedback"""
     if (
         comment_event.object_kind != "note"
@@ -194,7 +200,7 @@ async def handle_comment(comment_event: CommentEvent, request: Request):
 @app.get("/")
 def health_check():
     services_status = {
-        "gitlab_service": gitlab_tool is not None,
+        "github_service": github_tool is not None,
         "review_workflow": review_workflow is not None,
         "memory_service": memory_service is not None,
         "database_connection": memory_service.health_check()

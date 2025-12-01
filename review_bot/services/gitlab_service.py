@@ -1,135 +1,107 @@
 # review_bot/services/gitlab_service.py
 import os
 
-import gitlab
+import requests
 
 
-class GitLabService:
+class GitHubService:
     """
     A service class to wrap all necessary GitLab API interactions.
     This acts as a Tool callable by the LLM orchestration framework (LangGraph).
     """
 
-    def __init__(self, gitlab_url: str | None = None, private_token: str | None = None):
-        """Initializes the GitLab client."""
-        self.gitlab_url = gitlab_url or os.environ.get(
-            "GITLAB_URL", "https://gitlab.rz.uni-bamberg.de"
-        )
-        self.private_token = private_token or os.environ.get("GITLAB_TOKEN")
-        self.allowed_project_id = int(os.environ.get("ALLOWED_PROJECT_ID", "8462"))
+    def __init__(self, github_token: str | None = None):
+        """Initializes the GitHub client."""
+        self.github_token = github_token or os.environ.get("GITHUB_TOKEN")
+        self.repo_owner = os.environ.get("GITHUB_OWNER", "sfdnas-adm")
+        self.repo_name = os.environ.get("GITHUB_REPO", "-Agentic-AI_Multi-User")
+        self.base_url = "https://api.github.com"
 
-        if (
-            not self.private_token
-            or self.private_token == "your_gitlab_personal_access_token"
-        ):
-            raise ValueError(
-                "GITLAB_TOKEN must be set to a valid token in the environment."
-            )
+        if not self.github_token:
+            raise ValueError("GITHUB_TOKEN must be set in the environment.")
 
         # Debug: Log token info (first/last 4 chars only for security)
         token_preview = (
-            f"{self.private_token[:4]}...{self.private_token[-4:]}"
-            if len(self.private_token) > 8
+            f"{self.github_token[:4]}...{self.github_token[-4:]}"
+            if len(self.github_token) > 8
             else "[short_token]"
         )
-        print(f"GitLab token configured: {token_preview}")
+        print(f"GitHub token configured: {token_preview}")
 
-        # Initialize the Gitlab client
-        self.gl = gitlab.Gitlab(self.gitlab_url, private_token=self.private_token)
+        # Set up headers for GitHub API
+        self.headers = {
+            "Authorization": f"token {self.github_token}",
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-    def fetch_mr_diff(self, project_id: int, mr_iid: int) -> str:
+    def fetch_pr_diff(self, pr_number: int) -> str:
         """
-        Fetches the complete code diff (changes) for a Merge Request.
-
-        :param project_id: The project ID.
-        :param mr_iid: The internal ID (IID) of the Merge Request.
-        :return: A single string containing all file changes in unified diff format.
+        Fetches the complete code diff (changes) for a Pull Request.
         """
-        # Check if project is allowed
-        if project_id != self.allowed_project_id:
-            return f"Error: Project {project_id} not allowed. Only project {self.allowed_project_id} is supported."
-
         try:
-            # 1. Get the project object
-            project = self.gl.projects.get(project_id)
+            # Get PR diff directly
+            diff_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/pulls/{pr_number}/files"
+            diff_response = requests.get(diff_url, headers=self.headers)
+            diff_response.raise_for_status()
+            files_data = diff_response.json()
 
-            # 2. Get the specific Merge Request object
-            mr = project.mergerequests.get(mr_iid)
-
-            # 3. Retrieve the changes data
-            # The .changes() method gets the MR's diff content.
-            changes_data = mr.changes()
-
-            # 4. Process and format the diff for the LLM
+            # Process diff for LLM
             full_diff_text = []
-
-            # Iterate through all files changed in the MR
-            for change in changes_data.get("changes", []):
-                file_diff = change.get("diff", "")
-                if file_diff:
-                    # Append the diff for each file. This is the crucial input context.
+            for file_data in files_data:
+                if "patch" in file_data:
                     full_diff_text.append(
-                        f"--- File: {change.get('old_path')} -> {change.get('new_path')} ---\n{file_diff}\n"
+                        f"--- File: {file_data['filename']} ---\n{file_data['patch']}\n"
                     )
 
             diff_content = "\n".join(full_diff_text)
 
             # Add issue context
-            issue_context = self.fetch_issue_details(project_id, mr_iid)
-            if (
-                issue_context
-                and "Error" not in issue_context
-                and "No" not in issue_context
-            ):
+            issue_context = self.fetch_issue_details(pr_number)
+            if issue_context and "No linked issues" not in issue_context:
                 return f"=== LINKED ISSUES ===\n{issue_context}\n\n=== CODE CHANGES ===\n{diff_content}"
 
             return diff_content
 
-        except gitlab.exceptions.GitlabGetError as e:
-            return f"Error fetching MR changes: {e}"
+        except requests.exceptions.RequestException as e:
+            return f"Error fetching PR changes: {e}"
         except Exception as e:
             return f"An unexpected error occurred: {e}"
 
-    def post_review_comment(
-        self, project_id: int, mr_iid: int, comment_body: str
-    ) -> bool:
+    def post_review_comment(self, pr_number: int, comment_body: str) -> bool:
         """
-        Posts the final synthesized review as a comment on the Merge Request.
+        Posts the final synthesized review as a comment on the Pull Request.
+        """
+        try:
+            comment_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/issues/{pr_number}/comments"
+            comment_data = {"body": comment_body}
 
-        :param project_id: The project ID.
-        :param mr_iid: The internal ID (IID) of the Merge Request.
-        :return: True if successful, False otherwise.
-        """
-        # Check if project is allowed
-        if project_id != self.allowed_project_id:
-            print(
-                f"Error: Project {project_id} not allowed. Only project {self.allowed_project_id} is supported."
+            response = requests.post(
+                comment_url, headers=self.headers, json=comment_data
             )
-            return False
+            response.raise_for_status()
 
-        try:
-            project = self.gl.projects.get(project_id)
-            mr = project.mergerequests.get(mr_iid)
-
-            # Use the .notes.create() method to add a comment (also called a "note" in the API)
-            mr.notes.create({"body": comment_body})
+            print(f"Posted review comment to PR #{pr_number}")
             return True
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error posting comment to PR #{pr_number}: {e}")
+            return False
         except Exception as e:
-            print(f"Error posting comment to MR !{mr_iid}: {e}")
+            print(f"Unexpected error posting comment: {e}")
             return False
 
-    def fetch_issue_details(self, project_id: int, mr_iid: int) -> str:
+    def fetch_issue_details(self, pr_number: int) -> str:
         """Fetch linked issue details for context."""
-        if project_id != self.allowed_project_id:
-            return "Error: Project not allowed"
-
         try:
-            project = self.gl.projects.get(project_id)
-            mr = project.mergerequests.get(mr_iid)
+            # Get PR details
+            pr_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/pulls/{pr_number}"
+            pr_response = requests.get(pr_url, headers=self.headers)
+            pr_response.raise_for_status()
+            pr_data = pr_response.json()
 
-            # Get MR description to find issue references
-            description = mr.description or ""
-            title = mr.title or ""
+            # Get PR description and title
+            description = pr_data.get("body") or ""
+            title = pr_data.get("title") or ""
 
             # Look for issue references (#123, closes #123, etc.)
             import re
@@ -142,12 +114,17 @@ class GitLabService:
             issue_details = []
             for issue_id in set(issue_refs):  # Remove duplicates
                 try:
-                    issue = project.issues.get(int(issue_id))
+                    issue_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/issues/{issue_id}"
+                    issue_response = requests.get(issue_url, headers=self.headers)
+                    issue_response.raise_for_status()
+                    issue_data = issue_response.json()
+
+                    labels = [label["name"] for label in issue_data.get("labels", [])]
                     issue_details.append(
-                        f"Issue #{issue_id}: {issue.title}\n"
-                        f"Description: {issue.description or 'No description'}\n"
-                        f"Labels: {', '.join(issue.labels) if issue.labels else 'None'}\n"
-                        f"State: {issue.state}"
+                        f"Issue #{issue_id}: {issue_data['title']}\n"
+                        f"Description: {issue_data.get('body') or 'No description'}\n"
+                        f"Labels: {', '.join(labels) if labels else 'None'}\n"
+                        f"State: {issue_data['state']}"
                     )
                 except Exception:
                     continue
@@ -158,5 +135,7 @@ class GitLabService:
                 else "No accessible issues found"
             )
 
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             return f"Error fetching issue details: {e}"
+        except Exception as e:
+            return f"Error processing issues: {e}"
