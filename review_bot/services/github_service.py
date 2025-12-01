@@ -1,4 +1,4 @@
-# review_bot/services/gitlab_service.py
+# review_bot/services/github_service.py
 import os
 
 import requests
@@ -6,7 +6,7 @@ import requests
 
 class GitHubService:
     """
-    A service class to wrap all necessary GitLab API interactions.
+    A service class to wrap all necessary GitHub API interactions.
     This acts as a Tool callable by the LLM orchestration framework (LangGraph).
     """
 
