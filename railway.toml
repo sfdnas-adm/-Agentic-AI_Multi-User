@@ -1,0 +1,27 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+healthcheckPath = "/"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+
+[[services]]
+name = "app"
+source = "."
+
+[services.variables]
+GITHUB_TOKEN = "${{GITHUB_TOKEN}}"
+GITHUB_OWNER = "${{GITHUB_OWNER}}"  
+GITHUB_REPO = "${{GITHUB_REPO}}"
+GEMINI_API_KEY = "${{GEMINI_API_KEY}}"
+OLLAMA_URL = "http://localhost:11434"
+REVIEWER_A_MODEL = "llama3.2"
+REVIEWER_B_TYPE = "gemini"
+REVIEWER_B_MODEL = "gemini-2.0-flash-exp"
+JUDGE_MODEL = "llama3.2"
+DATABASE_URL = "${{Postgres.DATABASE_URL}}"
+
+[[services]]
+name = "database"
+source = "postgresql"
