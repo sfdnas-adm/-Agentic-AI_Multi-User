@@ -73,12 +73,12 @@ class GitLabService:
                     )
 
             diff_content = "\n".join(full_diff_text)
-            
+
             # Add issue context
             issue_context = self.fetch_issue_details(project_id, mr_iid)
             if issue_context and "Error" not in issue_context and "No" not in issue_context:
                 return f"=== LINKED ISSUES ===\n{issue_context}\n\n=== CODE CHANGES ===\n{diff_content}"
-            
+
             return diff_content
 
         except gitlab.exceptions.GitlabGetError as e:
@@ -118,22 +118,22 @@ class GitLabService:
         """Fetch linked issue details for context."""
         if project_id != self.allowed_project_id:
             return "Error: Project not allowed"
-        
+
         try:
             project = self.gl.projects.get(project_id)
             mr = project.mergerequests.get(mr_iid)
-            
+
             # Get MR description to find issue references
             description = mr.description or ""
             title = mr.title or ""
-            
+
             # Look for issue references (#123, closes #123, etc.)
             import re
             issue_refs = re.findall(r'#(\d+)', f"{title} {description}")
-            
+
             if not issue_refs:
                 return "No linked issues found"
-            
+
             issue_details = []
             for issue_id in set(issue_refs):  # Remove duplicates
                 try:
@@ -144,10 +144,10 @@ class GitLabService:
                         f"Labels: {', '.join(issue.labels) if issue.labels else 'None'}\n"
                         f"State: {issue.state}"
                     )
-                except:
+                except Exception:
                     continue
-            
+
             return "\n\n".join(issue_details) if issue_details else "No accessible issues found"
-            
+
         except Exception as e:
             return f"Error fetching issue details: {e}"
