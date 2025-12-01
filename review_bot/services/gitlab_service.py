@@ -1,43 +1,39 @@
 # review_bot/services/gitlab_service.py
 import os
+import requests
 
-import gitlab
 
-
-class GitLabService:
+class GitHubService:
     """
     A service class to wrap all necessary GitLab API interactions.
     This acts as a Tool callable by the LLM orchestration framework (LangGraph).
     """
 
-    def __init__(self, gitlab_url: str | None = None, private_token: str | None = None):
-        """Initializes the GitLab client."""
-        self.gitlab_url = gitlab_url or os.environ.get(
-            "GITLAB_URL", "https://gitlab.rz.uni-bamberg.de"
-        )
-        self.private_token = private_token or os.environ.get("GITLAB_TOKEN")
-        self.allowed_project_id = int(os.environ.get("ALLOWED_PROJECT_ID", "8462"))
+    def __init__(self, github_token: str | None = None):
+        """Initializes the GitHub client."""
+        self.github_token = github_token or os.environ.get("GITHUB_TOKEN")
+        self.repo_owner = os.environ.get("GITHUB_OWNER", "sfdnas-adm")
+        self.repo_name = os.environ.get("GITHUB_REPO", "-Agentic-AI_Multi-User")
+        self.base_url = "https://api.github.com"
 
-        if (
-            not self.private_token
-            or self.private_token == "your_gitlab_personal_access_token"
-        ):
-            raise ValueError(
-                "GITLAB_TOKEN must be set to a valid token in the environment."
-            )
+        if not self.github_token:
+            raise ValueError("GITHUB_TOKEN must be set in the environment.")
 
         # Debug: Log token info (first/last 4 chars only for security)
         token_preview = (
-            f"{self.private_token[:4]}...{self.private_token[-4:]}"
-            if len(self.private_token) > 8
+            f"{self.github_token[:4]}...{self.github_token[-4:]}"
+            if len(self.github_token) > 8
             else "[short_token]"
         )
-        print(f"GitLab token configured: {token_preview}")
+        print(f"GitHub token configured: {token_preview}")
 
-        # Initialize the Gitlab client
-        self.gl = gitlab.Gitlab(self.gitlab_url, private_token=self.private_token)
+        # Set up headers for GitHub API
+        self.headers = {
+            "Authorization": f"token {self.github_token}",
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-    def fetch_mr_diff(self, project_id: int, mr_iid: int) -> str:
+    def fetch_pr_diff(self, pr_number: int) -> str:
         """
         Fetches the complete code diff (changes) for a Merge Request.
 
