@@ -21,12 +21,15 @@ class GitHubService:
             raise ValueError("GITHUB_TOKEN must be set in the environment.")
 
         # Debug: Log token info (first/last 4 chars only for security)
+        import logging
+
+        logger = logging.getLogger(__name__)
         token_preview = (
             f"{self.github_token[:4]}...{self.github_token[-4:]}"
             if len(self.github_token) > 8
             else "[short_token]"
         )
-        print(f"GitHub token configured: {token_preview}")
+        logger.info("GitHub token configured: %s", token_preview)
 
         # Set up headers for GitHub API
         self.headers = {
@@ -38,104 +41,87 @@ class GitHubService:
         """
         Fetches the complete code diff (changes) for a Pull Request.
         """
-        try:
-            # Get PR diff directly
-            diff_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/pulls/{pr_number}/files"
-            diff_response = requests.get(diff_url, headers=self.headers)
-            diff_response.raise_for_status()
-            files_data = diff_response.json()
+        # Get PR diff directly
+        diff_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/pulls/{pr_number}/files"
+        diff_response = requests.get(diff_url, headers=self.headers)
+        diff_response.raise_for_status()
+        files_data = diff_response.json()
 
-            # Process diff for LLM
-            full_diff_text = []
-            for file_data in files_data:
-                if "patch" in file_data:
-                    full_diff_text.append(
-                        f"--- File: {file_data['filename']} ---\n{file_data['patch']}\n"
-                    )
+        # Process diff for LLM
+        full_diff_text = []
+        for file_data in files_data:
+            if "patch" in file_data:
+                full_diff_text.append(
+                    f"--- File: {file_data['filename']} ---\n{file_data['patch']}\n"
+                )
 
-            diff_content = "\n".join(full_diff_text)
+        diff_content = "\n".join(full_diff_text)
 
-            # Add issue context
-            issue_context = self.fetch_issue_details(pr_number)
-            if issue_context and "No linked issues" not in issue_context:
-                return f"=== LINKED ISSUES ===\n{issue_context}\n\n=== CODE CHANGES ===\n{diff_content}"
+        # Add issue context
+        issue_context = self.fetch_issue_details(pr_number)
+        if issue_context and "No linked issues" not in issue_context:
+            return f"=== LINKED ISSUES ===\n{issue_context}\n\n=== CODE CHANGES ===\n{diff_content}"
 
-            return diff_content
-
-        except requests.exceptions.RequestException as e:
-            return f"Error fetching PR changes: {e}"
-        except Exception as e:
-            return f"An unexpected error occurred: {e}"
+        return diff_content
 
     def post_review_comment(self, pr_number: int, comment_body: str) -> bool:
         """
         Posts the final synthesized review as a comment on the Pull Request.
         """
-        try:
-            comment_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/issues/{pr_number}/comments"
-            comment_data = {"body": comment_body}
+        import logging
 
-            response = requests.post(
-                comment_url, headers=self.headers, json=comment_data
-            )
-            response.raise_for_status()
+        logger = logging.getLogger(__name__)
 
-            print(f"Posted review comment to PR #{pr_number}")
-            return True
+        comment_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/issues/{pr_number}/comments"
+        comment_data = {"body": comment_body}
 
-        except requests.exceptions.RequestException as e:
-            print(f"Error posting comment to PR #{pr_number}: {e}")
-            return False
-        except Exception as e:
-            print(f"Unexpected error posting comment: {e}")
-            return False
+        response = requests.post(comment_url, headers=self.headers, json=comment_data)
+        response.raise_for_status()
+
+        logger.info("Posted review comment to PR #%d", pr_number)
+        return True
 
     def fetch_issue_details(self, pr_number: int) -> str:
         """Fetch linked issue details for context."""
-        try:
-            # Get PR details
-            pr_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/pulls/{pr_number}"
-            pr_response = requests.get(pr_url, headers=self.headers)
-            pr_response.raise_for_status()
-            pr_data = pr_response.json()
+        import logging
+        import re
 
-            # Get PR description and title
-            description = pr_data.get("body") or ""
-            title = pr_data.get("title") or ""
+        logger = logging.getLogger(__name__)
 
-            # Look for issue references (#123, closes #123, etc.)
-            import re
+        # Get PR details
+        pr_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/pulls/{pr_number}"
+        pr_response = requests.get(pr_url, headers=self.headers)
+        pr_response.raise_for_status()
+        pr_data = pr_response.json()
 
-            issue_refs = re.findall(r"#(\d+)", f"{title} {description}")
+        # Get PR description and title
+        description = pr_data.get("body") or ""
+        title = pr_data.get("title") or ""
 
-            if not issue_refs:
-                return "No linked issues found"
+        # Look for issue references (#123, closes #123, etc.)
+        issue_refs = re.findall(r"#(\d+)", f"{title} {description}")
 
-            issue_details = []
-            for issue_id in set(issue_refs):  # Remove duplicates
-                try:
-                    issue_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/issues/{issue_id}"
-                    issue_response = requests.get(issue_url, headers=self.headers)
-                    issue_response.raise_for_status()
-                    issue_data = issue_response.json()
+        if not issue_refs:
+            return "No linked issues found"
 
-                    labels = [label["name"] for label in issue_data.get("labels", [])]
-                    issue_details.append(
-                        f"Issue #{issue_id}: {issue_data['title']}\n"
-                        f"Description: {issue_data.get('body') or 'No description'}\n"
-                        f"Labels: {', '.join(labels) if labels else 'None'}\n"
-                        f"State: {issue_data['state']}"
-                    )
-                except Exception:
-                    continue
+        issue_details = []
+        for issue_id in set(issue_refs):  # Remove duplicates
+            issue_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/issues/{issue_id}"
+            issue_response = requests.get(issue_url, headers=self.headers)
+            if issue_response.status_code == 200:
+                issue_data = issue_response.json()
+                labels = [label["name"] for label in issue_data.get("labels", [])]
+                issue_details.append(
+                    f"Issue #{issue_id}: {issue_data['title']}\n"
+                    f"Description: {issue_data.get('body') or 'No description'}\n"
+                    f"Labels: {', '.join(labels) if labels else 'None'}\n"
+                    f"State: {issue_data['state']}"
+                )
+            else:
+                logger.warning("Could not fetch issue #%s", issue_id)
 
-            return (
-                "\n\n".join(issue_details)
-                if issue_details
-                else "No accessible issues found"
-            )
-
-        except requests.exceptions.RequestException as e:
-            return f"Error fetching issue details: {e}"
-        except Exception as e:
-            return f"Error processing issues: {e}"
+        return (
+            "\n\n".join(issue_details)
+            if issue_details
+            else "No accessible issues found"
+        )

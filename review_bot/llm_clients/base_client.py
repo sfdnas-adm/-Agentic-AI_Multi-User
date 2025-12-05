@@ -26,30 +26,27 @@ class OllamaClient(BaseLLMClient):
     def generate_structured_response(
         self, prompt: str, system_prompt: str
     ) -> dict[str, Any]:
-        try:
-            import requests
+        import requests
 
-            full_prompt = f"{system_prompt}\n\nUser: {prompt}\n\nAssistant: "
+        full_prompt = f"{system_prompt}\n\nUser: {prompt}\n\nAssistant: "
 
-            response = requests.post(
+        with requests.Session() as session:
+            response = session.post(
                 f"{self.base_url}/api/generate",
                 json={"model": self.model_name, "prompt": full_prompt, "stream": False},
+                timeout=60,
             )
+            response.raise_for_status()
 
-            if response.status_code == 200:
-                result = response.json()
-                content = result.get("response", "")
+            result = response.json()
+            content = result.get("response", "")
 
-                # Try to parse as JSON, fallback to string
-                try:
-                    return json.loads(content)
-                except json.JSONDecodeError:
-                    return {"response": content}
+            # Try to parse as JSON, fallback to string
+            if content.startswith("{") and content.endswith("}"):
+                parsed_json = json.loads(content)
+                return parsed_json
             else:
-                return {"error": f"Ollama API error: {response.status_code}"}
-
-        except Exception as e:
-            return {"error": str(e)}
+                return {"response": content}
 
 
 class GeminiClient(BaseLLMClient):
@@ -67,26 +64,33 @@ class GeminiClient(BaseLLMClient):
             self.client = genai.Client(api_key=api_key)
             self.model_name = model_name
         except Exception as e:
-            print(f"Failed to initialize Gemini client: {e}")
+            import logging
+
+            logging.error("Failed to initialize Gemini client: %s", str(e))
             raise
 
     def generate_structured_response(
         self, prompt: str, system_prompt: str
     ) -> dict[str, Any]:
-        try:
-            full_prompt = f"{system_prompt}\n\n{prompt}"
+        import logging
 
-            response = self.client.models.generate_content(
-                model=self.model_name, contents=full_prompt
-            )
+        logger = logging.getLogger(__name__)
 
-            content = response.text if hasattr(response, "text") else str(response)
+        full_prompt = f"{system_prompt}\n\n{prompt}"
 
-            # Try to parse as JSON, fallback to string
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                return {"response": content}
+        response = self.client.models.generate_content(
+            model=self.model_name, contents=full_prompt
+        )
 
-        except Exception as e:
-            return {"error": str(e)}
+        if not response:
+            logger.error("Empty response from Gemini API")
+            return {"error": "Empty response from Gemini API"}
+
+        content = response.text if hasattr(response, "text") else str(response)
+
+        # Try to parse as JSON, fallback to string
+        if content.startswith("{") and content.endswith("}"):
+            parsed_json = json.loads(content)
+            return parsed_json
+        else:
+            return {"response": content}

@@ -38,30 +38,31 @@ class PostgresMemoryService:
         max_retries = 5
 
         for attempt in range(max_retries):
-            try:
-                with self._get_connection() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                            CREATE TABLE IF NOT EXISTS mr_reviews (
-                                mr_iid INTEGER,
-                                project_id INTEGER,
-                                diff_text TEXT,
-                                final_review_text TEXT,
-                                review_comment_id INTEGER,
-                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                PRIMARY KEY (project_id, mr_iid)
-                            )
-                        """)
-                        conn.commit()
+            conn = self._get_connection()
+            if conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS mr_reviews (
+                            mr_iid INTEGER,
+                            project_id INTEGER,
+                            diff_text TEXT,
+                            final_review_text TEXT,
+                            review_comment_id INTEGER,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            PRIMARY KEY (project_id, mr_iid)
+                        )
+                    """)
+                    conn.commit()
+                conn.close()
                 logger.info("Database schema initialized")
                 return
-            except Exception as e:
-                logger.warning(f"Database connection attempt {attempt + 1} failed: {e}")
+            else:
+                logger.warning("Database connection attempt %d failed", attempt + 1)
                 if attempt < max_retries - 1:
                     time.sleep(2)
                 else:
                     logger.error(
-                        f"Failed to initialize schema after {max_retries} attempts: {e}"
+                        "Failed to initialize schema after %d attempts", max_retries
                     )
 
     def save_review_context(
@@ -73,65 +74,56 @@ class PostgresMemoryService:
         review_comment_id: int | None = None,
     ) -> bool:
         """Save review context to database"""
-        try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        INSERT INTO mr_reviews (project_id, mr_iid, diff_text, final_review_text, review_comment_id)
-                        VALUES (%s, %s, %s, %s, %s)
-                        ON CONFLICT (project_id, mr_iid)
-                        DO UPDATE SET
-                            diff_text = EXCLUDED.diff_text,
-                            final_review_text = EXCLUDED.final_review_text,
-                            review_comment_id = EXCLUDED.review_comment_id
-                    """,
-                        (
-                            project_id,
-                            mr_iid,
-                            diff_text,
-                            final_review_text,
-                            review_comment_id,
-                        ),
-                    )
-                    conn.commit()
-            logger.info(f"Saved review context for MR !{mr_iid}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to save review context: {e}")
-            return False
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO mr_reviews (project_id, mr_iid, diff_text, final_review_text, review_comment_id)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (project_id, mr_iid)
+                    DO UPDATE SET
+                        diff_text = EXCLUDED.diff_text,
+                        final_review_text = EXCLUDED.final_review_text,
+                        review_comment_id = EXCLUDED.review_comment_id
+                """,
+                    (
+                        project_id,
+                        mr_iid,
+                        diff_text,
+                        final_review_text,
+                        review_comment_id,
+                    ),
+                )
+                conn.commit()
+        logger.info("Saved review context for MR !%d", mr_iid)
+        return True
 
     def load_review_context(
         self, project_id: int, mr_iid: int
     ) -> tuple[str | None, str | None]:
         """Load review context from database"""
-        try:
-            with self._get_connection() as conn:
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute(
-                        """
-                        SELECT diff_text, final_review_text
-                        FROM mr_reviews
-                        WHERE project_id = %s AND mr_iid = %s
-                    """,
-                        (project_id, mr_iid),
-                    )
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT diff_text, final_review_text
+                    FROM mr_reviews
+                    WHERE project_id = %s AND mr_iid = %s
+                """,
+                    (project_id, mr_iid),
+                )
 
-                    result = cur.fetchone()
-                    if result:
-                        return result["diff_text"], result["final_review_text"]
-                    return None, None
-        except Exception as e:
-            logger.error(f"Failed to load review context: {e}")
-            return None, None
+                result = cur.fetchone()
+                if result:
+                    return result["diff_text"], result["final_review_text"]
+                return None, None
 
     def health_check(self) -> bool:
         """Check if database connection is healthy"""
-        try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT 1")
-                    return True
-        except Exception as e:
-            logger.error(f"Database health check failed: {e}")
-            return False
+        conn = self._get_connection()
+        if conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            conn.close()
+            return True
+        return False
