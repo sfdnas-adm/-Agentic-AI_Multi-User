@@ -61,16 +61,19 @@ except Exception as e:
 
 
 async def process_review_workflow(project_id: int, pr_number: int):
-    if not github_tool or not review_workflow:
-        logger.error("Services not initialized properly")
+    if not github_tool:
+        logger.error("GitHub service not initialized")
+        return
+    if not review_workflow:
+        logger.error("Review workflow not initialized")
         return
 
     logger.info("STARTING review for PR #%d", pr_number)
 
     # --- 1. Use the new Tool to fetch the code diff ---
     diff_text = github_tool.fetch_pr_diff(pr_number)
-    if "Error" in diff_text:
-        logger.error("Failed to fetch diff for PR #%d: %s", pr_number, diff_text)
+    if not diff_text or diff_text.startswith("Error fetching"):
+        logger.error("Failed to fetch diff for PR #%d", pr_number)
         return
     logger.info("Successfully fetched diff (Size: %d characters)", len(diff_text))
 
