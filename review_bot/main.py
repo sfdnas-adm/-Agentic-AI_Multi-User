@@ -41,23 +41,14 @@ github_tool = None
 review_workflow = None
 memory_service = None
 
-try:
-    github_tool = GitHubService()
-    logger.info("GitHub service initialized")
-except Exception as e:
-    logger.error(f"Failed to initialize GitHub service: {e}")
+github_tool = GitHubService()
+logger.info("GitHub service initialized")
 
-try:
-    review_workflow = ReviewWorkflow()
-    logger.info("Review workflow initialized")
-except Exception as e:
-    logger.error(f"Failed to initialize review workflow: {e}")
+review_workflow = ReviewWorkflow()
+logger.info("Review workflow initialized")
 
-try:
-    memory_service = PostgresMemoryService()
-    logger.info("Memory service initialized")
-except Exception as e:
-    logger.error(f"Failed to initialize memory service: {e}")
+memory_service = PostgresMemoryService()
+logger.info("Memory service initialized")
 
 
 async def process_review_workflow(project_id: int, pr_number: int):
@@ -162,19 +153,16 @@ async def process_human_feedback(project_id: int, pr_number: int, human_comment:
 
     if not diff_text:
         logger.warning(
-            f"No previous context found for PR #{pr_number}. Ignoring comment."
+            "No previous context found for PR #%d. Ignoring comment.", pr_number
         )
         return
 
-    try:
-        # Run justification workflow
-        result = review_workflow.run_justification(
-            project_id, pr_number, diff_text, ai_review, human_comment
-        )
-        if result.get("error_message"):
-            logger.error(f"Justification workflow error: {result['error_message']}")
-    except Exception as e:
-        logger.error(f"Justification workflow failed: {e}")
+    # Run justification workflow
+    result = review_workflow.run_justification(
+        project_id, pr_number, diff_text, ai_review, human_comment
+    )
+    if result.get("error_message"):
+        logger.error("Justification workflow error: %s", result["error_message"])
 
     logger.info("COMPLETED justification for PR #%d", pr_number)
 
