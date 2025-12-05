@@ -40,12 +40,13 @@ class ReviewWorkflow:
             "judge_prompt.txt",
             "justify_prompt.txt",
         ]:
-            try:
-                with open(f"{prompt_dir}/{prompt_file}") as f:
+            prompt_path = f"{prompt_dir}/{prompt_file}"
+            if os.path.exists(prompt_path):
+                with open(prompt_path) as f:
                     key = prompt_file.replace("_prompt.txt", "")
                     prompts[key] = f.read().strip()
-            except FileNotFoundError:
-                logger.warning(f"Prompt file {prompt_file} not found")
+            else:
+                logger.warning("Prompt file %s not found", prompt_file)
                 prompts[prompt_file.replace("_prompt.txt", "")] = ""
 
         return prompts
@@ -118,8 +119,9 @@ Readability/Maintainability Review:
 
     def justify_node(self, state: MRReviewState) -> MRReviewState:
         """Handle human feedback and justify/correct review"""
-        try:
-            justify_input = f"""
+        logger.info("=== JUSTIFY (Human Feedback) ===")
+
+        justify_input = f"""
 Original Code Diff:
 {state["diff_text"]}
 
@@ -130,19 +132,21 @@ Human Feedback:
 {state.get("human_comment", "")}
 """
 
-            response = self.judge_client.generate_structured_response(
-                prompt=justify_input, system_prompt=self.prompts.get("justify", "")
-            )
+        logger.info("Justify input size: %d characters", len(justify_input))
 
-            justified_review = response if isinstance(response, str) else str(response)
-            state["justified_review_text"] = justified_review
+        response = self.judge_client.generate_structured_response(
+            prompt=justify_input, system_prompt=self.prompts.get("justify", "")
+        )
 
-            # Post justification as reply
-            self.github_service.post_review_comment(state["mr_iid"], justified_review)
+        justified_review = response if isinstance(response, str) else str(response)
+        logger.info("Justify output: %s", justified_review[:500])
+        state["justified_review_text"] = justified_review
 
-        except Exception as e:
-            logger.error(f"Justify failed: {e}")
-            state["error_message"] = [f"Justify error: {str(e)}"]
+        # Post justification as reply
+        success = self.github_service.post_review_comment(
+            state["mr_iid"], justified_review
+        )
+        logger.info("Posted justification comment: %s", success)
 
         return state
 
