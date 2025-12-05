@@ -65,33 +65,28 @@ async def process_review_workflow(project_id: int, pr_number: int):
         logger.error("Services not initialized properly")
         return
 
-    logger.info(f"STARTING review for PR #{pr_number}...")
+    logger.info("STARTING review for PR #%d", pr_number)
 
     # --- 1. Use the new Tool to fetch the code diff ---
     diff_text = github_tool.fetch_pr_diff(pr_number)
-
     if "Error" in diff_text:
-        logger.error(f"Failed to fetch diff for PR #{pr_number}: {diff_text}")
+        logger.error("Failed to fetch diff for PR #%d: %s", pr_number, diff_text)
         return
-
-    logger.info(f"Successfully fetched diff (Size: {len(diff_text)} characters).")
+    logger.info("Successfully fetched diff (Size: %d characters)", len(diff_text))
 
     # --- 2. Run LangGraph workflow ---
-    try:
-        result = review_workflow.run_review(project_id, pr_number, diff_text)
-        if result.get("error_message"):
-            logger.error(f"Review workflow error: {result['error_message']}")
-        else:
-            # Save context for potential human feedback
-            final_review = result.get("judge_output", "")
-            if memory_service:
-                memory_service.save_review_context(
-                    project_id, pr_number, diff_text, final_review
-                )
-    except Exception as e:
-        logger.error(f"Review workflow failed: {e}")
+    result = review_workflow.run_review(project_id, pr_number, diff_text)
+    if result.get("error_message"):
+        logger.error("Review workflow error: %s", result["error_message"])
+    else:
+        # Save context for potential human feedback
+        final_review = result.get("judge_output", "")
+        if memory_service:
+            memory_service.save_review_context(
+                project_id, pr_number, diff_text, final_review
+            )
 
-    logger.info(f"COMPLETED review for PR #{pr_number}.")
+    logger.info("COMPLETED review for PR #%d", pr_number)
 
 
 app = FastAPI(title="AI Code Review Bot")
@@ -121,7 +116,7 @@ async def handle_pull_request(pr_event: GitHubPullRequest, request: Request):
     if not github_tool or not review_workflow:
         return {"status": "error", "reason": "Services not initialized"}
 
-    logger.info(f"Received PR Webhook: Repository {repo_name}, PR #{pr_number}")
+    logger.info("Received PR Webhook: Repository %s, PR #%d", repo_name, pr_number)
 
     # 2. Crucial: Respond immediately and process heavy work asynchronously
     asyncio.create_task(
@@ -140,7 +135,7 @@ async def process_human_feedback(project_id: int, pr_number: int, human_comment:
         logger.error("Services not initialized properly")
         return
 
-    logger.info(f"Processing human feedback for PR #{pr_number}")
+    logger.info("Processing human feedback for PR #%d", pr_number)
 
     # Load context from PostgreSQL
     diff_text, ai_review = memory_service.load_review_context(project_id, pr_number)
@@ -161,7 +156,7 @@ async def process_human_feedback(project_id: int, pr_number: int, human_comment:
     except Exception as e:
         logger.error(f"Justification workflow failed: {e}")
 
-    logger.info(f"COMPLETED justification for PR #{pr_number}")
+    logger.info("COMPLETED justification for PR #%d", pr_number)
 
 
 @app.post("/webhook/comment")
@@ -186,7 +181,7 @@ async def handle_comment(comment_event: GitHubComment, request: Request):
     if not memory_service or not review_workflow:
         return {"status": "error", "reason": "Services not initialized"}
 
-    logger.info(f"Received comment webhook: Repository {repo_name}, PR #{pr_number}")
+    logger.info("Received comment webhook: Repository %s, PR #%d", repo_name, pr_number)
 
     # Process feedback asynchronously
     asyncio.create_task(process_human_feedback(0, pr_number, comment_body))

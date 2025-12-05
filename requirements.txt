@@ -5,6 +5,7 @@ pydantic
 # API Interactions
 requests
 python-gitlab # for GitLab API calls
+httpx
 # LLM Orchestration
 langchain-core
 langgraph

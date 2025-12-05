@@ -4,7 +4,7 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from review_bot.llm_clients.base_client import GeminiClient, OllamaClient
+from review_bot.llm_clients.base_client import GeminiClient
 from review_bot.services.github_service import GitHubService
 from review_bot.services.review_service import MRReviewState
 
@@ -15,21 +15,16 @@ class ReviewWorkflow:
     def __init__(self):
         self.github_service = GitHubService()
 
-        # Initialize different models for each role
-        self.reviewer_a_client = OllamaClient(os.getenv("REVIEWER_A_MODEL", "llama3.2"))
-
-        # Use Gemini for Reviewer B
-        reviewer_b_type = os.getenv("REVIEWER_B_TYPE", "ollama")
-        if reviewer_b_type == "gemini":
-            self.reviewer_b_client = GeminiClient(
-                os.getenv("REVIEWER_B_MODEL", "gemini-2.0-flash-exp")
-            )
-        else:
-            self.reviewer_b_client = OllamaClient(
-                os.getenv("REVIEWER_B_MODEL", "llama3.2")
-            )
-
-        self.judge_client = OllamaClient(os.getenv("JUDGE_MODEL", "llama3.2"))
+        # Initialize all models with Gemini for cloud deployment
+        self.reviewer_a_client = GeminiClient(
+            os.getenv("REVIEWER_A_MODEL", "gemini-2.0-flash-exp")
+        )
+        self.reviewer_b_client = GeminiClient(
+            os.getenv("REVIEWER_B_MODEL", "gemini-2.0-flash-exp")
+        )
+        self.judge_client = GeminiClient(
+            os.getenv("JUDGE_MODEL", "gemini-2.0-flash-exp")
+        )
 
         self.graph = self._build_graph()
 
