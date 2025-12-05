@@ -33,37 +33,22 @@ class PostgresMemoryService:
 
     def _init_schema(self):
         """Initialize database schema"""
-        import time
-
-        max_retries = 5
-
-        for attempt in range(max_retries):
-            conn = self._get_connection()
-            if conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS mr_reviews (
-                            mr_iid INTEGER,
-                            project_id INTEGER,
-                            diff_text TEXT,
-                            final_review_text TEXT,
-                            review_comment_id INTEGER,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            PRIMARY KEY (project_id, mr_iid)
-                        )
-                    """)
-                    conn.commit()
-                conn.close()
-                logger.info("Database schema initialized")
-                return
-            else:
-                logger.warning("Database connection attempt %d failed", attempt + 1)
-                if attempt < max_retries - 1:
-                    time.sleep(2)
-                else:
-                    logger.error(
-                        "Failed to initialize schema after %d attempts", max_retries
-                    )
+        conn = self._get_connection()
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mr_reviews (
+                    mr_iid INTEGER,
+                    project_id INTEGER,
+                    diff_text TEXT,
+                    final_review_text TEXT,
+                    review_comment_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (project_id, mr_iid)
+                )
+            """)
+            conn.commit()
+        conn.close()
+        logger.info("Database schema initialized")
 
     def save_review_context(
         self,
