@@ -17,12 +17,12 @@ class ReviewWorkflow:
 
         # Initialize all models with Gemini for cloud deployment
         self.reviewer_a_client = GeminiClient(
-            os.getenv("REVIEWER_A_MODEL", "gemini-1.5-flash")
+            os.getenv("REVIEWER_A_MODEL", "gemini-1.5-pro")
         )
         self.reviewer_b_client = GeminiClient(
-            os.getenv("REVIEWER_B_MODEL", "gemini-1.5-flash")
+            os.getenv("REVIEWER_B_MODEL", "gemini-1.5-pro")
         )
-        self.judge_client = GeminiClient(os.getenv("JUDGE_MODEL", "gemini-1.5-flash"))
+        self.judge_client = GeminiClient(os.getenv("JUDGE_MODEL", "gemini-1.5-pro"))
 
         self.graph = self._build_graph()
 
