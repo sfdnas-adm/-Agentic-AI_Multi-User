@@ -47,8 +47,13 @@ logger.info("GitHub service initialized")
 review_workflow = ReviewWorkflow()
 logger.info("Review workflow initialized")
 
-memory_service = PostgresMemoryService()
-logger.info("Memory service initialized")
+# Try to initialize memory service, but don't crash if DB unavailable
+memory_service = None
+if os.getenv("DATABASE_URL") or os.getenv("DB_HOST"):
+    memory_service = PostgresMemoryService()
+    logger.info("Memory service initialized")
+else:
+    logger.warning("No database configuration found - memory service disabled")
 
 
 async def process_review_workflow(project_id: int, pr_number: int):
