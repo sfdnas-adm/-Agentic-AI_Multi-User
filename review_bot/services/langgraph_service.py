@@ -22,9 +22,7 @@ class ReviewWorkflow:
         self.reviewer_b_client = GeminiClient(
             os.getenv("REVIEWER_B_MODEL", "gemini-1.5-flash")
         )
-        self.judge_client = GeminiClient(
-            os.getenv("JUDGE_MODEL", "gemini-1.5-flash")
-        )
+        self.judge_client = GeminiClient(os.getenv("JUDGE_MODEL", "gemini-1.5-flash"))
 
         self.graph = self._build_graph()
 
