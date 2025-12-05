@@ -41,10 +41,20 @@ class GitHubService:
         """
         Fetches the complete code diff (changes) for a Pull Request.
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         # Get PR diff directly
         diff_url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/pulls/{pr_number}/files"
         diff_response = requests.get(diff_url, headers=self.headers)
-        diff_response.raise_for_status()
+
+        if diff_response.status_code != 200:
+            logger.error(
+                "GitHub API error %d for PR #%d", diff_response.status_code, pr_number
+            )
+            return f"Error fetching PR diff: HTTP {diff_response.status_code}"
+
         files_data = diff_response.json()
 
         # Process diff for LLM

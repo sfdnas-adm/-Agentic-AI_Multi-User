@@ -54,36 +54,43 @@ class ReviewWorkflow:
 
     def reviewer_a_node(self, state: MRReviewState) -> MRReviewState:
         """Security and performance reviewer"""
-        try:
-            response = self.reviewer_a_client.generate_structured_response(
-                prompt=f"Code diff to review:\n\n{state['diff_text']}",
-                system_prompt=self.prompts.get("reviewer_a", ""),
-            )
-            state["review_a_output"] = str(response)
-        except Exception as e:
-            logger.error(f"Reviewer A failed: {e}")
-            state["error_message"] = [f"Reviewer A error: {str(e)}"]
+        logger.info("=== REVIEWER A (Security/Performance) ===")
+        logger.info("Input diff size: %d characters", len(state["diff_text"]))
+        logger.info(
+            "System prompt: %s", self.prompts.get("reviewer_a", "NO PROMPT")[:200]
+        )
 
+        response = self.reviewer_a_client.generate_structured_response(
+            prompt=f"Code diff to review:\n\n{state['diff_text']}",
+            system_prompt=self.prompts.get("reviewer_a", ""),
+        )
+
+        logger.info("Reviewer A output: %s", str(response)[:500])
+        state["review_a_output"] = str(response)
         return state
 
     def reviewer_b_node(self, state: MRReviewState) -> MRReviewState:
         """Readability and maintainability reviewer"""
-        try:
-            response = self.reviewer_b_client.generate_structured_response(
-                prompt=f"Code diff to review:\n\n{state['diff_text']}",
-                system_prompt=self.prompts.get("reviewer_b", ""),
-            )
-            state["review_b_output"] = str(response)
-        except Exception as e:
-            logger.error(f"Reviewer B failed: {e}")
-            state["error_message"] = [f"Reviewer B error: {str(e)}"]
+        logger.info("=== REVIEWER B (Code Quality) ===")
+        logger.info("Input diff size: %d characters", len(state["diff_text"]))
+        logger.info(
+            "System prompt: %s", self.prompts.get("reviewer_b", "NO PROMPT")[:200]
+        )
 
+        response = self.reviewer_b_client.generate_structured_response(
+            prompt=f"Code diff to review:\n\n{state['diff_text']}",
+            system_prompt=self.prompts.get("reviewer_b", ""),
+        )
+
+        logger.info("Reviewer B output: %s", str(response)[:500])
+        state["review_b_output"] = str(response)
         return state
 
     def judge_node(self, state: MRReviewState) -> MRReviewState:
         """Synthesize reviews and post final comment"""
-        try:
-            judge_input = f"""
+        logger.info("=== JUDGE (Synthesis) ===")
+
+        judge_input = f"""
 Original Code Diff:
 {state["diff_text"]}
 
@@ -94,19 +101,20 @@ Readability/Maintainability Review:
 {state.get("review_b_output", "No output")}
 """
 
-            response = self.judge_client.generate_structured_response(
-                prompt=judge_input, system_prompt=self.prompts.get("judge", "")
-            )
+        logger.info("Judge input size: %d characters", len(judge_input))
+        logger.info("System prompt: %s", self.prompts.get("judge", "NO PROMPT")[:200])
 
-            final_review = response if isinstance(response, str) else str(response)
-            state["judge_output"] = final_review
+        response = self.judge_client.generate_structured_response(
+            prompt=judge_input, system_prompt=self.prompts.get("judge", "")
+        )
 
-            # Post the review
-            self.github_service.post_review_comment(state["mr_iid"], final_review)
+        final_review = response if isinstance(response, str) else str(response)
+        logger.info("Judge output: %s", final_review[:500])
+        state["judge_output"] = final_review
 
-        except Exception as e:
-            logger.error(f"Judge failed: {e}")
-            state["error_message"] = [f"Judge error: {str(e)}"]
+        # Post the review
+        success = self.github_service.post_review_comment(state["mr_iid"], final_review)
+        logger.info("Posted review comment: %s", success)
 
         return state
 
