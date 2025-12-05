@@ -78,16 +78,26 @@ async def process_review_workflow(project_id: int, pr_number: int):
     logger.info("Successfully fetched diff (Size: %d characters)", len(diff_text))
 
     # --- 2. Run LangGraph workflow ---
+    logger.info("Starting LangGraph workflow for PR #%d", pr_number)
     result = review_workflow.run_review(project_id, pr_number, diff_text)
+
+    logger.info("Workflow result keys: %s", list(result.keys()))
+
     if result.get("error_message"):
         logger.error("Review workflow error: %s", result["error_message"])
     else:
         # Save context for potential human feedback
         final_review = result.get("judge_output", "")
+        logger.info(
+            "Final review length: %d characters",
+            len(final_review) if final_review else 0,
+        )
+
         if memory_service:
-            memory_service.save_review_context(
+            success = memory_service.save_review_context(
                 project_id, pr_number, diff_text, final_review
             )
+            logger.info("Saved review context: %s", success)
 
     logger.info("COMPLETED review for PR #%d", pr_number)
 
@@ -134,11 +144,18 @@ async def handle_pull_request(pr_event: GitHubPullRequest, request: Request):
 
 async def process_human_feedback(project_id: int, pr_number: int, human_comment: str):
     """Process human feedback on AI review"""
-    if not memory_service or not review_workflow:
-        logger.error("Services not initialized properly")
+    if not memory_service:
+        logger.error("Memory service not initialized")
+        return
+    if not review_workflow:
+        logger.error("Review workflow not initialized")
         return
 
-    logger.info("Processing human feedback for PR #%d", pr_number)
+    logger.info(
+        "Processing human feedback for PR #%d (comment length: %d)",
+        pr_number,
+        len(human_comment),
+    )
 
     # Load context from PostgreSQL
     diff_text, ai_review = memory_service.load_review_context(project_id, pr_number)

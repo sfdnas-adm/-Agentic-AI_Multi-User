@@ -173,6 +173,11 @@ Human Feedback:
         self, project_id: int, mr_iid: int, diff_text: str
     ) -> dict[str, Any]:
         """Run the main review workflow"""
+        logger.info("=== STARTING REVIEW WORKFLOW ===")
+        logger.info(
+            "Project ID: %d, MR: %d, Diff size: %d", project_id, mr_iid, len(diff_text)
+        )
+
         initial_state = MRReviewState(
             diff_text=diff_text,
             project_id=project_id,
@@ -186,7 +191,9 @@ Human Feedback:
             justified_review_text=None,
         )
 
+        logger.info("Invoking LangGraph workflow...")
         result = self.graph.invoke(initial_state)
+        logger.info("=== WORKFLOW COMPLETED ===")
         return result
 
     def run_justification(
