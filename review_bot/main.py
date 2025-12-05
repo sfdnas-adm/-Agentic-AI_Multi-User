@@ -61,8 +61,11 @@ except Exception as e:
 
 
 async def process_review_workflow(project_id: int, pr_number: int):
-    if not github_tool or not review_workflow:
-        logger.error("Services not initialized properly")
+    if not github_tool:
+        logger.error("GitHub service not initialized")
+        return
+    if not review_workflow:
+        logger.error("Review workflow not initialized")
         return
 
     logger.info("STARTING review for PR #%d", pr_number)
