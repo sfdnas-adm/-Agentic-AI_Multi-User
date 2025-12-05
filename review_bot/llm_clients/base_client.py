@@ -60,7 +60,7 @@ class OllamaClient(BaseLLMClient):
 
 
 class GeminiClient(BaseLLMClient):
-    def __init__(self, model_name: str = "gemini-2.0-flash-exp"):
+    def __init__(self, model_name: str = "gemini-1.5-flash"):
         super().__init__(model_name)
         import logging
 

@@ -17,14 +17,12 @@ class ReviewWorkflow:
 
         # Initialize all models with Gemini for cloud deployment
         self.reviewer_a_client = GeminiClient(
-            os.getenv("REVIEWER_A_MODEL", "gemini-2.0-flash-exp")
+            os.getenv("REVIEWER_A_MODEL", "gemini-1.5-flash")
         )
         self.reviewer_b_client = GeminiClient(
-            os.getenv("REVIEWER_B_MODEL", "gemini-2.0-flash-exp")
+            os.getenv("REVIEWER_B_MODEL", "gemini-1.5-flash")
         )
-        self.judge_client = GeminiClient(
-            os.getenv("JUDGE_MODEL", "gemini-2.0-flash-exp")
-        )
+        self.judge_client = GeminiClient(os.getenv("JUDGE_MODEL", "gemini-1.5-flash"))
 
         self.graph = self._build_graph()
 
@@ -173,6 +171,11 @@ Human Feedback:
         self, project_id: int, mr_iid: int, diff_text: str
     ) -> dict[str, Any]:
         """Run the main review workflow"""
+        logger.info("=== STARTING REVIEW WORKFLOW ===")
+        logger.info(
+            "Project ID: %d, MR: %d, Diff size: %d", project_id, mr_iid, len(diff_text)
+        )
+
         initial_state = MRReviewState(
             diff_text=diff_text,
             project_id=project_id,
@@ -186,7 +189,9 @@ Human Feedback:
             justified_review_text=None,
         )
 
+        logger.info("Invoking LangGraph workflow...")
         result = self.graph.invoke(initial_state)
+        logger.info("=== WORKFLOW COMPLETED ===")
         return result
 
     def run_justification(
